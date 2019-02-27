@@ -145,14 +145,14 @@ void loop() {
   //ALARM SWITCH CASE
   //defined what to do for each Alarm states (Standby, ON, IN MOTION, OFF, ALERT, TEST)
   switch (Alarme_state) {
-    case 0:
+    case 0: //Standby instructions
       auto_activate();
       message = "Standby " + ping_number;
       digitalWrite(led_B, HIGH); digitalWrite(led_G, LOW); digitalWrite(led_R, LOW);
       digitalWrite(buzz_pin, LOW);
       break;
 
-    case 1:
+    case 1: //ON instructions
       message = "ON " + ping_number;
       digitalWrite(led_B, LOW); digitalWrite(led_G, led_osc); digitalWrite(led_R, LOW);
       digitalWrite(relay_pin, LOW);
@@ -166,7 +166,7 @@ void loop() {
       }
       break;
 
-    case 2:
+    case 2: //IN MOTION instructions
       message = "IN MOTION " + ping_number;
       digitalWrite(led_B, LOW);
       digitalWrite(relay_pin, LOW);
@@ -188,7 +188,7 @@ void loop() {
       }
       break;
 
-    case 3:
+    case 3: //OFF instructions
       message = "OFF " + ping_number;
       digitalWrite(led_B, LOW); digitalWrite(led_G, LOW); digitalWrite(led_R, LOW);
       digitalWrite(relay_pin, LOW);
@@ -199,7 +199,7 @@ void loop() {
       Alarme_state = 0;
       break;
 
-    case 4:
+    case 4: //ALERT instructions
       message = "ALERT " + ping_number;
       digitalWrite(led_B, LOW); digitalWrite(led_G, LOW);
       digitalWrite(led_R, led_osc);
@@ -214,7 +214,7 @@ void loop() {
       }
       break;
 
-    case 5:
+    case 5: //TEST instructions
       message = "TEST " + ping_number;
       function_test();
       break;
@@ -386,8 +386,10 @@ int reset_timer() {
 
 
 //AUTO ACTIVATION
+//When Standby for more than "auto_activate_time" (20min) with no movement: automatically switch ON
 int auto_activate() {
   if (auto_activate_time >= minutes) {
+    //
     if (!digitalRead(pir_1_pin) && !digitalRead(pir_2_pin)) {
       tone(piezo_pin, 1000, 1000);
       reset_timer();
