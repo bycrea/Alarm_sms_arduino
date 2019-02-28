@@ -6,21 +6,22 @@
 int Alarme_state = 0;
 
 //TEMPO
-unsigned long start_timer, current_time;     //Variables use for timer
-int secondes = 0;
-const int period = 1, tempo_IO = 40;         //timers periods in secondes
-const int auto_activate_time = 1200;         //Time before auto activation in secondes
+unsigned long start_timer, current_time;       //Variables use for timer
+int secondes = 0, minutes = 0;
+const int period = 1, tempo_IO = 40;           //timers period in secondes / Tempo IN OUT in secondes
+const int auto_activate_time = 20;             //Time before auto activation in minutes
 bool led_osc = LOW;
 
 //SIM CARD
-GPRS gprs;                                   //Num Alarm : +33644824601
-int sms_number = "+33624944955";             //Number to alert
-String ping_number = "!";                    //Save last number received and send it.
-char currentLine[50] = "";                   //Variables to hold last line of serial output from SIM800
+GPRS gprs;                                     //Num Alarm : +33644824601
+int sms_number = "+33624944955";               //Number to alert
+String ping_number = "!";                      //Save last number received and send it if different than sms_number
+char ping_numberToChar[12];                    //Convert "ping_number" To Char (GPRS needs Char)
+char currentLine[50] = "";                     //Variables to hold last line of serial output from SIM800
 int currentLineIndex = 0;
 bool nextLineIsMessage = false;
-String message = "";                         //String message To Send
-char messageToChar[50];                      //String message To Char (GPRS needs Char)
+String message = "";                           //String message To Send
+char messageToChar[50];                        //Convert "message" To Char (GPRS needs Char)
 
 //EXT COMMUNICATION IO
 const int led_R = 12;
@@ -30,21 +31,21 @@ const int piezo_pin = 2;
 const int relay_pin = 5;
 const int buzz_pin = 10;
 //BUTTON IO
-const int B_sms = 4;                         //Activate (LOW) or desactivate (PULLUP) SMS SERVICES
-const int B_test = 3;                        //Test Button (use for debug)
-const int B_light = 6;                       //Light ON/OFF button (activate relay_pin)
+const int B_sms = 4;                           //Activate (LOW) or desactivate (PULLUP) SMS SERVICES
+const int B_test = 3;                          //Test Button (use for debug)
+const int B_light = 6;                         //Light ON/OFF button (activate relay_pin)
 //PIRS
 int pir_1_pin = A0;
 int pir_2_pin = A1;
 //POWER SUPPLY IO
-const int BA_input = A2;                     //BATTERY (12v)
-const int DC_input = A3;                     //DC INPUT (12v)
+const int BA_input = A2;                       //BATTERY (12v)
+const int DC_input = A3;                       //DC INPUT (12v)
 float BA_volt;
 float DC_volt;
-float R1 = 100000.00;                        //Resistance R1 (100K)
-float R2 = 10000.00;                         //Resistance R2 (10K)
-int volt_transmit[3] = {0, 0, 1};            //Allows voltages sms to be sent only once (DC Alert,BATT Alert,"Power?" answer)
- 
+float R1 = 100000.00;                          //Resistance R1 (100K)
+float R2 = 10000.00;                           //Resistance R2 (10K)
+int volt_transmit[3] = {0, 0, 1};              //Allows voltages sms to be sent only once (DC Alert,BATT Alert,"Power?" answer)
+
 
 void setup() {
   //Define OUTPUT
@@ -62,11 +63,11 @@ void setup() {
   pinMode(B_light, INPUT);
   pinMode(BA_input, INPUT);
   pinMode(DC_input, INPUT);
-  
+
   //Activate Serial comm                          //TEST
   //Serial.begin(9600);
   //while (!Serial);
-  
+
   //SIM CARD activation if B_sms LOW
   if (!digitalRead(B_sms))
   {
@@ -97,36 +98,42 @@ void setup() {
   if (digitalRead(B_light))
   {
     tone(piezo_pin, 500, 100);
-    Alarme_state = 0;                       //Set to "0" Alarm starts when Arduino is turned ON
+    Alarme_state = 0;                           //Set to "0" Alarm starts when Arduino is turned ON
   } else {
     tone(piezo_pin, 1000, 100);
-    Alarme_state = 1;                       //Set to "1" Alarm Standby (wait for sms)
+    Alarme_state = 1;                           //Set to "1" Alarm Standby (wait for sms)
+    digitalWrite(buzz_pin, HIGH);               //BUZZ Alert : Alarm is ON
+    delay(80);
+    digitalWrite(buzz_pin, LOW);
   }
-  start_timer = millis();                   //Start timer millis
+  start_timer = millis();                      //Start timer millis
 }
 
 
 void loop() {
-  function_send_sms(0);                     //Send SMS set to false (avoid sending more than one SMS at the time)
-  function_read_sms();                      //Read SMS
-  
-  power_check();                            //Read POWER voltage from DC and BATERRY 
-  tempo_secondes(period);                   //Update timer
+  function_send_sms(0);                       //Send SMS set to false (avoid sending more than one SMS at the time)
+  function_read_sms();                        //Read SMS
+
+  power_check();                              //Read POWER voltage from DC and BATERRY
+  tempo_secondes(period);                     //Update timer
 
   //TEST button
-  //Use to stop Alarm at any time. 
+  //Use to stop Alarm at any time.
   if (!digitalRead(B_test) && Alarme_state != 0) {
     delay(200);
     tone(piezo_pin, 1200, 50);
     reset_timer();
+    minutes = 0;
     Alarme_state = 0;
-  //Else If Alarm is standby : Start function TEST
+    //Else If Alarm is standby : Start function TEST
   } else if (!digitalRead(B_test)) {
     delay(200);
     tone(piezo_pin, 1200, 50);
     reset_timer();
+    minutes = 0;
     Alarme_state = 5;
   }
+
   //LIGHT button
   //If Alarm is standby : Switch ON relay pin.
   if (digitalRead(B_light) && Alarme_state == 0) {
@@ -138,31 +145,28 @@ void loop() {
   //ALARM SWITCH CASE
   //defined what to do for each Alarm states (Standby, ON, IN MOTION, OFF, ALERT, TEST)
   switch (Alarme_state) {
-    case 0:
+    case 0: //Standby instructions
       auto_activate();
       message = "Standby " + ping_number;
       digitalWrite(led_B, HIGH); digitalWrite(led_G, LOW); digitalWrite(led_R, LOW);
       digitalWrite(buzz_pin, LOW);
       break;
 
-    case 1:
+    case 1: //ON instructions
       message = "ON " + ping_number;
       digitalWrite(led_B, LOW); digitalWrite(led_G, led_osc); digitalWrite(led_R, LOW);
       digitalWrite(relay_pin, LOW);
       digitalWrite(buzz_pin, LOW);
-      //if(led_osc) tone(piezo_pin, 1200, 50);
+      if (led_osc) tone(piezo_pin, 1200, 50);
       if (secondes >= tempo_IO) {
         reset_timer();
-        while (1 != function_send_sms(1));
         tone(piezo_pin, 1000, 100);
-        digitalWrite(buzz_pin, HIGH);
-        delay(100);
-        digitalWrite(buzz_pin, LOW);
+        while (1 != function_send_sms(1));
         Alarme_state = 2;
       }
       break;
 
-    case 2:
+    case 2: //IN MOTION instructions
       message = "IN MOTION " + ping_number;
       digitalWrite(led_B, LOW);
       digitalWrite(relay_pin, LOW);
@@ -170,7 +174,7 @@ void loop() {
       if (digitalRead(pir_1_pin) || digitalRead(pir_2_pin)) {
         digitalWrite(led_G, led_osc);
         digitalWrite(led_R, !led_osc);
-        if(led_osc) tone(piezo_pin, 1200, 50);
+        if (led_osc) tone(piezo_pin, 1200, 50);
       } else if (!digitalRead(pir_1_pin) && !digitalRead(pir_2_pin)) {
         reset_timer();
         digitalWrite(led_R, HIGH);
@@ -184,38 +188,33 @@ void loop() {
       }
       break;
 
-    case 3:
+    case 3: //OFF instructions
       message = "OFF " + ping_number;
       digitalWrite(led_B, LOW); digitalWrite(led_G, LOW); digitalWrite(led_R, LOW);
       digitalWrite(relay_pin, LOW);
       digitalWrite(buzz_pin, LOW);
-      if (secondes >= 2) {
-        reset_timer();
-        while (1 != function_send_sms(1));
-        tone(piezo_pin, 500, 100);
-        digitalWrite(buzz_pin, HIGH);                                                      //TEST BUZZ
-        delay(100);
-        digitalWrite(buzz_pin, LOW);
-        Alarme_state = 0;
-      }
+      tone(piezo_pin, 500, 100);
+
+      while (1 != function_send_sms(1));
+      Alarme_state = 0;
       break;
 
-    case 4:
+    case 4: //ALERT instructions
       message = "ALERT " + ping_number;
       digitalWrite(led_B, LOW); digitalWrite(led_G, LOW);
       digitalWrite(led_R, led_osc);
       digitalWrite(relay_pin, !led_osc);
       digitalWrite(buzz_pin, HIGH);
       if (!led_osc) tone(piezo_pin, 750, 500);
-      
+
       if (secondes == tempo_IO) {
-        while (1 != function_send_sms(1));
         reset_timer();
+        while (1 != function_send_sms(1));
         Alarme_state = 2;
       }
       break;
 
-    case 5:
+    case 5: //TEST instructions
       message = "TEST " + ping_number;
       function_test();
       break;
@@ -229,10 +228,14 @@ int function_send_sms(bool sms_reset) {
   if (digitalRead(B_sms) == LOW) {
     message.toCharArray(messageToChar, 50);
     gprs.sendSMS (sms_number, messageToChar);
+    if (ping_number != sms_number) {
+      ping_number.toCharArray(ping_numberToChar, 12);
+      gprs.sendSMS (ping_numberToChar, messageToChar);
+    }
     tone(piezo_pin, 1200, 50);
     return true;
   } else {
-    Serial.println(message);
+    //Serial.println(message);
     return true;
   }
 }
@@ -258,9 +261,18 @@ int function_read_sms() {
           //Serial.println(lastLine);
           //Serial.println(message);
           //Read message content and set Alarm according to SMS content
-          if (lastLine.indexOf("ON") >= 0) {
+          if (lastLine.indexOf("ON") >= 0) {                                      //TURN ON Alarm
+            reset_timer();
+            digitalWrite(buzz_pin, HIGH);                                         //BUZZ Alert : Alarm is OFF
+            delay(80);
+            digitalWrite(buzz_pin, LOW);
             Alarme_state = 1;
-          } else if (lastLine.indexOf("OFF") >= 0) {
+          } else if (lastLine.indexOf("OFF") >= 0) {                              //TURN OFF Alarm
+            reset_timer();
+            minutes = 0;
+            digitalWrite(buzz_pin, HIGH);                                         //BUZZ Alert : Alarm is OFF
+            delay(80);
+            digitalWrite(buzz_pin, LOW);
             Alarme_state = 3;
           } else if (lastLine.indexOf("State?") >= 0) {                           //Returns Alarme_state
             function_send_sms(1);
@@ -358,12 +370,13 @@ int power_check() {
 
 
 //TIMERS
-int tempo_secondes(int timer) {  
+int tempo_secondes(int timer) {
   current_time = millis();
-  if ((current_time - start_timer) >= timer*1000)
+  if ((current_time - start_timer) >= timer * 1000)
   {
     start_timer = current_time;
     secondes++ ;
+    minutes = secondes / 60;
     led_osc = !led_osc;
   }
 }
@@ -373,14 +386,21 @@ int reset_timer() {
 
 
 //AUTO ACTIVATION
+//When Standby for more than "auto_activate_time" (20min) with no movement: automatically switch ON
 int auto_activate() {
-  if (secondes >= auto_activate_time) {
+  if (auto_activate_time >= minutes) {
+    //
     if (!digitalRead(pir_1_pin) && !digitalRead(pir_2_pin)) {
-      reset_timer();
       tone(piezo_pin, 1000, 1000);
-      Alarme_state = 1; 
+      digitalWrite(buzz_pin, HIGH);                                         //BUZZ Alert : Alarm is OFF
+      delay(80);
+      digitalWrite(buzz_pin, LOW);
+      reset_timer();
+      minutes = 0;
+      Alarme_state = 1;
     } else {
       reset_timer();
+      minutes = 0;
       Alarme_state = 0;
     }
   }

@@ -133,7 +133,7 @@ void loop() {
     minutes = 0;
     Alarme_state = 5;
   }
-  
+
   //LIGHT button
   //If Alarm is standby : Switch ON relay pin.
   if (digitalRead(B_light) && Alarme_state == 0) {
@@ -194,7 +194,7 @@ void loop() {
       digitalWrite(relay_pin, LOW);
       digitalWrite(buzz_pin, LOW);
       tone(piezo_pin, 500, 100);
-      
+
       while (1 != function_send_sms(1));
       Alarme_state = 0;
       break;
@@ -392,6 +392,9 @@ int auto_activate() {
     //
     if (!digitalRead(pir_1_pin) && !digitalRead(pir_2_pin)) {
       tone(piezo_pin, 1000, 1000);
+      digitalWrite(buzz_pin, HIGH);                                         //BUZZ Alert : Alarm is OFF
+      delay(80);
+      digitalWrite(buzz_pin, LOW);
       reset_timer();
       minutes = 0;
       Alarme_state = 1;
