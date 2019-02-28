@@ -388,7 +388,7 @@ int reset_timer() {
 //AUTO ACTIVATION
 //When Standby for more than "auto_activate_time" (20min) with no movement: automatically switch ON
 int auto_activate() {
-  if (auto_activate_time >= minutes) {
+  if (minutes >= auto_activate_time) {
     //
     if (!digitalRead(pir_1_pin) && !digitalRead(pir_2_pin)) {
       tone(piezo_pin, 1000, 1000);
